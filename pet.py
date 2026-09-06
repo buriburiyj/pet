@@ -2,6 +2,7 @@ import json
 import pathlib
 import subprocess
 import sys
+import time
 
 from PyQt6.QtCore import Qt, QPoint, QTimer, QRectF
 from PyQt6.QtGui import (QCursor, QImage, QKeySequence, QPainter, QPixmap,
@@ -114,11 +115,17 @@ class Pet(QWidget):
         self._drag = e.globalPosition().toPoint() - self.frameGeometry().topLeft()
         self._press = e.globalPosition().toPoint()
         self._moved = False
+        self._t = time.monotonic()
         self.activateWindow()
 
     def mouseReleaseEvent(self, e):
-        if not getattr(self, "_moved", True):
-            self.launch()
+        if self.following:
+            return
+        if getattr(self, "_moved", True):
+            return
+        if time.monotonic() - getattr(self, "_t", 0) > 0.35:
+            return
+        self.launch()
 
     def launch(self):
         cmd = 'cd {} && opencode'.format(PROJECT)
@@ -158,7 +165,23 @@ class Pet(QWidget):
             {"size": self.size_px, "x": self.x(), "y": self.y()}))
 
 
+import socket
+_lock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    _lock.bind(("127.0.0.1", 51737))
+except OSError:
+    print("이미 실행 중")
+    sys.exit(0)
+
+try:
+    from AppKit import NSApplication, NSApplicationActivationPolicyAccessory
+except Exception:
+    NSApplication = None
+
 app = QApplication(sys.argv)
+if NSApplication:
+    NSApplication.sharedApplication().setActivationPolicy_(
+        NSApplicationActivationPolicyAccessory)
 pet = Pet(sys.argv[1] if len(sys.argv) > 1 else None)
 pet.show()
 pet.raise_()
