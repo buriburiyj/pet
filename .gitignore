@@ -2,3 +2,4 @@
 state.json
 check.png
 __pycache__/
+.DS_Store

@@ -1,5 +1,6 @@
 import json
 import pathlib
+import subprocess
 import sys
 
 from PyQt6.QtCore import Qt, QPoint, QTimer, QRectF
@@ -8,6 +9,8 @@ from PyQt6.QtGui import (QCursor, QImage, QKeySequence, QPainter, QPixmap,
 from PyQt6.QtWidgets import QApplication, QMenu, QWidget
 
 STATE = pathlib.Path(__file__).with_name("state.json")
+PROJECT = pathlib.Path.home() / "dev" / "pet"
+
 
 
 class Pet(QWidget):
@@ -102,16 +105,37 @@ class Pet(QWidget):
         m.addAction("작게 (-)").triggered.connect(lambda: self.apply_size(self.size_px - 32))
         m.addAction("기본 크기 (0)").triggered.connect(lambda: self.apply_size(160))
         m.addSeparator()
+        m.addAction("opencode 열기").triggered.connect(self.launch)
+        m.addSeparator()
         m.addAction("닫기 (Q)").triggered.connect(self.close)
         m.exec(self.mapToGlobal(pos))
 
     def mousePressEvent(self, e):
         self._drag = e.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        self._press = e.globalPosition().toPoint()
+        self._moved = False
         self.activateWindow()
 
+    def mouseReleaseEvent(self, e):
+        if not getattr(self, "_moved", True):
+            self.launch()
+
+    def launch(self):
+        cmd = 'cd {} && opencode'.format(PROJECT)
+        subprocess.Popen([
+            "osascript",
+            "-e", 'tell application "Terminal" to do script "{}"'.format(cmd),
+            "-e", 'tell application "Terminal" to activate',
+        ])
+
     def mouseMoveEvent(self, e):
+        q0 = e.globalPosition().toPoint()
+        if hasattr(self, "_press"):
+            d = (q0 - self._press)
+            if abs(d.x()) + abs(d.y()) > 4:
+                self._moved = True
         if not self.following:
-            q = e.globalPosition().toPoint() - self._drag
+            q = q0 - self._drag
             self.move(q)
             self.fx, self.fy = float(q.x()), float(q.y())
 
@@ -121,7 +145,7 @@ class Pet(QWidget):
             self.apply_size(self.size_px + (16 if d > 0 else -16))
 
     def mouseDoubleClickEvent(self, e):
-        self.close()
+        pass
 
     def load(self):
         try:
