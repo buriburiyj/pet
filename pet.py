@@ -20,6 +20,7 @@ class Pet(QWidget):
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -179,11 +180,24 @@ except Exception:
     NSApplication = None
 
 app = QApplication(sys.argv)
-if NSApplication:
-    NSApplication.sharedApplication().setActivationPolicy_(
-        NSApplicationActivationPolicyAccessory)
+
+
+def all_spaces(w=None):
+    try:
+        from AppKit import NSApp
+    except Exception:
+        print("pyobjc 없음")
+        return
+    n = 0
+    for nw in NSApp.windows():
+        nw.setCollectionBehavior_(1 << 0 | 1 << 8)
+        n += 1
+    print("공간 설정한 창 수:", n)
 pet = Pet(sys.argv[1] if len(sys.argv) > 1 else None)
 pet.show()
 pet.raise_()
 pet.activateWindow()
+from PyQt6.QtCore import QTimer as _T
+_T.singleShot(500, all_spaces)
+_T.singleShot(2000, all_spaces)
 sys.exit(app.exec())
