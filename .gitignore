@@ -1,0 +1,4 @@
+.venv/
+state.json
+check.png
+__pycache__/
