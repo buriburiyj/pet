@@ -291,8 +291,8 @@ def all_spaces(w=None):
         print("pyobjc 없음")
         return
     for nw in NSApp.windows():
-        nw.setCollectionBehavior_(1 << 0 | 1 << 8)
-        nw.setLevel_(25)
+        nw.setCollectionBehavior_(1 << 0 | 1 << 8 | 1 << 4)
+        nw.setLevel_(1000)
 pet = Pet(sys.argv[1] if len(sys.argv) > 1 else None)
 pet.show()
 pet.raise_()
@@ -416,5 +416,73 @@ try:
     print("장난 동작 등록됨")
 except Exception as _e:
     print("장난 동작 실패:", _e)
+
+
+# ==== 눈 깜빡임 ====
+try:
+    import random as _rb, time as _tb
+    _EYES = [(19, 12, 2, 4), (24, 12, 2, 4)]
+
+    def _make_blink(src):
+        img = src.copy()
+        fill = img.pixelColor(22, 13)
+        for (ex, ey, ew, eh) in _EYES:
+            for yy in range(ey, ey + eh):
+                for xx in range(ex, ex + ew):
+                    if 0 <= xx < img.width() and 0 <= yy < img.height():
+                        img.setPixelColor(xx, yy, fill)
+        return img
+
+    _n_img, _n_flip = pet.img, pet.flipped
+    _b_img = _make_blink(_n_img)
+    _b_flip = _b_img.mirrored(True, False)
+    _blk = {"until": 0.0, "next": _tb.monotonic() + 2.0, "on": False}
+
+    def _blink_step():
+        now = _tb.monotonic()
+        if _blk["on"]:
+            if now >= _blk["until"]:
+                pet.img, pet.flipped = _n_img, _n_flip
+                _blk["on"] = False
+                _blk["next"] = now + _rb.uniform(2.5, 5.0)
+                pet.update()
+        elif now >= _blk["next"]:
+            pet.img, pet.flipped = _b_img, _b_flip
+            _blk["on"] = True
+            _blk["until"] = now + 0.12
+            pet.update()
+
+    _btimer = QTimer(pet)
+    _btimer.timeout.connect(_blink_step)
+    _btimer.start(40)
+    print("눈 깜빡임 등록됨")
+except Exception as _e:
+    print("눈 깜빡임 실패:", _e)
+
+# ==== 클릭: 빠른 메모 ====
+try:
+    import subprocess as _sp, time as _tn
+
+    def _quick_note():
+        NOTES = str(PROJECT / "notes.md") if "PROJECT" in globals() else "notes.md"
+        scr = ('display dialog "메모" default answer "" '
+               'with title "빠른 메모" buttons {"취소","저장"} default button "저장"')
+        r = _sp.run(["osascript", "-e", scr], capture_output=True, text=True)
+        if r.returncode != 0:
+            return
+        txt = ""
+        for part in r.stdout.strip().split(", "):
+            if part.startswith("text returned:"):
+                txt = part.split("text returned:", 1)[1].strip()
+        if not txt:
+            return
+        with open(NOTES, "a") as f:
+            f.write("- " + _tn.strftime("%m/%d %H:%M") + " " + txt + "\n")
+        print("메모 저장:", txt)
+
+    pet.launch = _quick_note
+    print("클릭 = 빠른 메모")
+except Exception as _e:
+    print("메모 기능 실패:", _e)
 
 sys.exit(app.exec())
