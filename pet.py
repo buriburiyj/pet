@@ -45,7 +45,12 @@ class Pet(QWidget):
         self._fly_target = QPointF()
 
         self.resize(self.size_px, self.size_px)
-        self.move(s.get("x", 600), s.get("y", 400))
+        _x, _y = int(s.get("x", 600)), int(s.get("y", 400))
+        _g = QApplication.primaryScreen().availableGeometry()
+        _x = max(_g.left(), min(_x, _g.right() - self.width()))
+        _y = max(_g.top(), min(_y, _g.bottom() - self.height()))
+        self.move(_x, _y)
+        self.fx, self.fy = float(_x), float(_y)
 
         self.anim = QTimer(self)
         self.anim.timeout.connect(self.beat)
@@ -145,6 +150,69 @@ class Pet(QWidget):
         m.addSeparator()
         m.addAction("닫기 (Q)").triggered.connect(self.close)
         m.exec(self.mapToGlobal(pos))
+
+    def keyPressEvent(self, e):
+
+        try:
+
+            nvk = int(e.nativeVirtualKey())
+
+        except Exception:
+
+            nvk = -1
+
+        t, k = e.text(), None
+
+        if t in ("f", "F", "\u3139") or nvk == 3:
+
+            k = "f"
+
+        elif t in ("q", "Q", "\u3142") or nvk == 12:
+
+            k = "q"
+
+        elif t in ("+", "=") or nvk in (24, 69):
+
+            k = "+"
+
+        elif t == "-" or nvk in (27, 78):
+
+            k = "-"
+
+        elif t == "0" or nvk in (29, 82):
+
+            k = "0"
+
+        if k == "f":
+
+            self.following = not self.following
+
+            print("따라오기:", self.following)
+
+        elif k == "q":
+
+            self.close()
+
+        elif k in ("+", "-", "0"):
+
+            cur = getattr(self, "size_px", 160)
+
+            n = {"+": cur + 16, "-": cur - 16, "0": 160}[k]
+
+            n = max(64, min(480, n))
+
+            if hasattr(self, "apply_size"):
+
+                self.apply_size(n)
+
+            else:
+
+                self.size_px = n
+
+                self.resize(n, n)
+
+            print("크기:", n)
+
 
     def mousePressEvent(self, e):
         self._drag = e.globalPosition().toPoint() - self.frameGeometry().topLeft()
@@ -304,5 +372,49 @@ try:
     print("전환 감지 등록됨")
 except Exception as _e:
     print("전환 연출 실패:", _e)
+
+
+# ==== 장난 동작 ====
+try:
+    import math as _mm, random as _rd, time as _tt
+    _mis = {"kind": None, "t0": 0.0, "next": _tt.monotonic() + 4.0,
+            "bx": 0.0, "by": 0.0}
+
+    def _mis_step():
+        now = _tt.monotonic()
+        if _mis["kind"] is None:
+            if pet.following or getattr(pet, "_flying", False) or now < _mis["next"]:
+                return
+            _mis["kind"] = _rd.choice(["hop", "hop", "wiggle"])
+            _mis["t0"] = now
+            _mis["bx"], _mis["by"] = pet.fx, pet.fy
+            return
+        t = now - _mis["t0"]
+        if _mis["kind"] == "hop":
+            if t > 1.0:
+                pet.fx, pet.fy = _mis["bx"], _mis["by"]
+                pet.move(round(pet.fx), round(pet.fy))
+                _mis["kind"] = None
+                _mis["next"] = now + _rd.uniform(5, 10)
+                return
+            h = abs(_mm.sin(_mm.pi * t * 2)) * 18
+            pet.fy = _mis["by"] - h
+            pet.move(round(pet.fx), round(pet.fy))
+        else:
+            if t > 0.8:
+                pet.fx, pet.fy = _mis["bx"], _mis["by"]
+                pet.move(round(pet.fx), round(pet.fy))
+                _mis["kind"] = None
+                _mis["next"] = now + _rd.uniform(5, 10)
+                return
+            pet.fx = _mis["bx"] + _mm.sin(t * 22) * 5
+            pet.move(round(pet.fx), round(pet.fy))
+
+    _mtimer = QTimer(pet)
+    _mtimer.timeout.connect(_mis_step)
+    _mtimer.start(16)
+    print("장난 동작 등록됨")
+except Exception as _e:
+    print("장난 동작 실패:", _e)
 
 sys.exit(app.exec())
