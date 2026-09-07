@@ -4,7 +4,7 @@ import subprocess
 import sys
 import time
 
-from PyQt6.QtCore import Qt, QPoint, QTimer, QRectF
+from PyQt6.QtCore import Qt, QPoint, QTimer, QRectF, QPointF
 from PyQt6.QtGui import (QCursor, QImage, QKeySequence, QPainter, QPixmap,
                          QShortcut)
 from PyQt6.QtWidgets import QApplication, QMenu, QWidget
@@ -20,7 +20,6 @@ class Pet(QWidget):
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
-            | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -38,6 +37,12 @@ class Pet(QWidget):
 
         self.img = QImage(path) if path else QImage()
         self.flipped = self.img.mirrored(True, False) if not self.img.isNull() else QImage()
+
+        # Space-change fly-in animation state
+        self._flying = False
+        self._fly_t = 0.0
+        self._fly_start = QPointF()
+        self._fly_target = QPointF()
 
         self.resize(self.size_px, self.size_px)
         self.move(s.get("x", 600), s.get("y", 400))
@@ -65,6 +70,35 @@ class Pet(QWidget):
 
     def toggle_follow(self):
         self.following = not self.following
+
+    def fly_in(self):
+        """Start fly-in animation from below-screen to current position."""
+        if self._flying:
+            return
+        self._flying = True
+        self._fly_t = 0.0
+        screen = QApplication.primaryScreen()
+        sh = screen.size().height() if screen else 1080
+        self._fly_start = QPointF(self.fx, self.fy + sh + 100)
+        self._fly_target = QPointF(self.fx, self.fy)
+        self._fly_timer = QTimer(self)
+        self._fly_timer.timeout.connect(self._fly_tick)
+        self._fly_timer.start(16)
+
+    def _fly_tick(self):
+        self._fly_t += 1
+        dt = self._fly_t / 20.0
+        if dt >= 1.0:
+            self._fly_t = 20
+            self._fly_timer.stop()
+            self._flying = False
+            return
+        # ease-out cubic
+        t = 1.0 - (1.0 - dt) ** 3
+        self.fx = self._fly_start.x() + (self._fly_target.x() - self._fly_start.x()) * t
+        self.fy = self._fly_start.y() + (self._fly_target.y() - self._fly_start.y()) * t
+        self.move(round(self.fx), round(self.fy))
+        self.update()
 
     def beat(self):
         self.tick += 1
@@ -188,16 +222,87 @@ def all_spaces(w=None):
     except Exception:
         print("pyobjc 없음")
         return
-    n = 0
     for nw in NSApp.windows():
         nw.setCollectionBehavior_(1 << 0 | 1 << 8)
-        n += 1
-    print("공간 설정한 창 수:", n)
+        nw.setLevel_(25)
 pet = Pet(sys.argv[1] if len(sys.argv) > 1 else None)
 pet.show()
 pet.raise_()
 pet.activateWindow()
+
+def _on_space_change(noti, pet_instance=pet):
+    """Called when the active space changes – trigger fly-in animation."""
+    pet_instance.fly_in()
+
+try:
+    from AppKit import NSWorkspace
+    _center = NSWorkspace.sharedWorkspace().notificationCenter()
+    _center.addObserverForName_object_queueUsingBlock_(
+        "NSWorkspaceActiveSpaceDidChangeNotification", None, None, _on_space_change)
+except Exception as e:
+    print("스페이스 변경 감지 설정 실패:", e)
+
 from PyQt6.QtCore import QTimer as _T
-_T.singleShot(500, all_spaces)
-_T.singleShot(2000, all_spaces)
+_T.singleShot(300, all_spaces)
+_keep = _T()
+_keep.timeout.connect(all_spaces)
+_keep.start(1500)
+
+# ==== 데스크톱 전환 연출 ====
+try:
+    import math as _m, time as _tm
+    from PyQt6.QtGui import QCursor as _QCursor
+    from Foundation import NSObject as _NSObject
+    from AppKit import NSWorkspace as _NSWorkspace
+
+    _FLY_MS = 650.0
+    _fly = {"on": False, "t0": 0.0, "sx": 0.0, "sy": 0.0, "tx": 0.0, "ty": 0.0}
+
+    def _start_fly():
+        scr = (pet.screen() or QApplication.primaryScreen()).geometry()
+        w, h = pet.width(), pet.height()
+        if pet.following:
+            c = _QCursor.pos()
+            tx, ty = c.x() - w / 2, c.y() - h / 2
+        else:
+            tx, ty = pet.fx, pet.fy
+        if tx + w / 2 > scr.center().x():
+            sx = scr.left() - w * 0.6
+        else:
+            sx = scr.right() + w * 0.6
+        _fly.update(on=True, t0=_tm.monotonic(), sx=sx, sy=ty + 70, tx=tx, ty=ty)
+        pet.fx, pet.fy = sx, ty + 70
+
+    def _fly_step():
+        if not _fly["on"]:
+            return
+        if pet.following:
+            c = _QCursor.pos()
+            _fly["tx"] = c.x() - pet.width() / 2
+            _fly["ty"] = c.y() - pet.height() / 2
+        t = (_tm.monotonic() - _fly["t0"]) * 1000.0 / _FLY_MS
+        if t >= 1.0:
+            pet.fx, pet.fy = _fly["tx"], _fly["ty"]
+            _fly["on"] = False
+            return
+        e = 1 - (1 - t) ** 3
+        pet.fx = _fly["sx"] + (_fly["tx"] - _fly["sx"]) * e
+        pet.fy = _fly["sy"] + (_fly["ty"] - _fly["sy"]) * e - _m.sin(_m.pi * t) * 26
+
+    _ftimer = QTimer(pet)
+    _ftimer.timeout.connect(_fly_step)
+    _ftimer.start(16)
+
+    class _SpaceWatch(_NSObject):
+        def spaceChanged_(self, noti):
+            print("전환 감지")
+            _start_fly()
+
+    _sw = _SpaceWatch.alloc().init()
+    _NSWorkspace.sharedWorkspace().notificationCenter().addObserver_selector_name_object_(
+        _sw, b"spaceChanged:", "NSWorkspaceActiveSpaceDidChangeNotification", None)
+    print("전환 감지 등록됨")
+except Exception as _e:
+    print("전환 연출 실패:", _e)
+
 sys.exit(app.exec())
