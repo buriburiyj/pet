@@ -146,7 +146,12 @@ class Pet(QWidget):
         m.addAction("작게 (-)").triggered.connect(lambda: self.apply_size(self.size_px - 32))
         m.addAction("기본 크기 (0)").triggered.connect(lambda: self.apply_size(160))
         m.addSeparator()
-        m.addAction("opencode 열기").triggered.connect(self.launch)
+        m.addAction("메모 (클릭)").triggered.connect(self.launch)
+        m.addAction("집중 25분").triggered.connect(lambda: self.act("timer"))
+        m.addAction("클립보드 기록 보기").triggered.connect(lambda: self.act("clip"))
+        m.addAction("클립보드 기록 정리").triggered.connect(lambda: self.act("clean"))
+        m.addAction("화면 캡처").triggered.connect(lambda: self.act("shot"))
+        m.addAction("opencode 열기").triggered.connect(lambda: self.act("code"))
         m.addSeparator()
         m.addAction("닫기 (Q)").triggered.connect(self.close)
         m.exec(self.mapToGlobal(pos))
@@ -491,5 +496,127 @@ try:
     print("클릭 = 빠른 메모")
 except Exception as _e:
     print("메모 기능 실패:", _e)
+
+
+# ==== 부가 기능 ====
+try:
+    import subprocess as _s2, time as _t2, pathlib as _p2
+
+    _HOME = _p2.Path(__file__).parent
+    _tm = {"end": 0.0}
+
+    def _notify(msg):
+        _s2.run(["osascript", "-e",
+                 'display dialog "%s" with title "펫" buttons {"확인"} '
+                 'default button 1 giving up after 3' % msg])
+
+    def _act(self, kind):
+        if kind == "timer":
+            now = _t2.monotonic()
+            if _tm["end"] > now:
+                left = int((_tm["end"] - now) / 60) + 1
+                _notify("%d분 남았어요" % left)
+                return
+            r = _s2.run(["osascript", "-e",
+                         'display dialog "몇 분?" default answer "25" '
+                         'with title "집중 타이머" buttons {"취소","시작"} '
+                         'default button "시작"'],
+                        capture_output=True, text=True)
+            if r.returncode != 0:
+                return
+            ans = ""
+            for part in r.stdout.strip().split(", "):
+                if part.startswith("text returned:"):
+                    ans = part.split("text returned:", 1)[1].strip()
+            try:
+                mins = int(ans)
+            except Exception:
+                return
+            if mins < 1 or mins > 600:
+                return
+            _tm["end"] = now + mins * 60
+            _notify("%d분 시작" % mins)
+            QTimer.singleShot(mins * 60 * 1000,
+                              lambda: _notify("%d분 끝. 쉬세요" % mins))
+        elif kind == "clip":
+            _s2.run(["open", str(_HOME / "clips.md")])
+        elif kind == "clean":
+            f = _HOME / "clips.md"
+            if not f.exists():
+                _notify("기록이 없어요")
+                return
+            blocks = [b for b in f.read_text().split("\n\n- ") if b.strip()]
+            if not blocks:
+                _notify("기록이 없어요")
+                return
+            items = []
+            for i, b in enumerate(blocks):
+                b = b if b.startswith("- ") else "- " + b
+                head = b.strip().split("\n")[0][2:].strip()
+                body = " ".join(b.strip().split("\n")[1:]).strip()
+                items.append((b, "%d) %s | %s" % (i + 1, head.replace(",", " "), body[:40].replace(",", " "))))
+            lst = ", ".join('"%s"' % t.replace('"', "'")
+                            for _, t in items)
+            r = _s2.run(["osascript", "-e",
+                         'choose from list {%s} with title "지울 항목" '
+                         'with prompt "지울 것을 고르세요" '
+                         'with multiple selections allowed' % lst],
+                        capture_output=True, text=True)
+            out = r.stdout.strip()
+            if not out or out == "false":
+                return
+            import re as _re
+            nums = set(int(n) for n in _re.findall(r"(\d+)\)", out))
+            print("고른 번호:", sorted(nums))
+            keep = [b for i, (b, t) in enumerate(items)
+                    if (i + 1) not in nums]
+            f.write_text("\n\n".join(x.strip() for x in keep) +
+                         ("\n\n" if keep else ""))
+            _notify("%d개 지웠어요" % (len(items) - len(keep)))
+        elif kind == "shot":
+            d = _HOME / "shots"
+            d.mkdir(exist_ok=True)
+            f = d / (_t2.strftime("%Y%m%d-%H%M%S") + ".png")
+            _s2.run(["screencapture", "-i", str(f)])
+            if f.exists():
+                _notify("캡처 저장")
+        elif kind == "code":
+            _s2.run(["osascript", "-e",
+                     'tell application "Terminal" to do script '
+                     '"cd %s && opencode"' % _HOME, "-e",
+                     'tell application "Terminal" to activate'])
+
+    Pet.act = _act
+    print("부가 기능 등록됨")
+except Exception as _e:
+    print("부가 기능 실패:", _e)
+
+
+# ==== 클립보드 자동 수집 ====
+try:
+    import subprocess as _s3, time as _t3, pathlib as _p3
+
+    _CLIPS = _p3.Path(__file__).parent / "clips.md"
+    _last = {"txt": _s3.run(["pbpaste"], capture_output=True,
+                            text=True).stdout}
+
+    def _clip_watch():
+        txt = _s3.run(["pbpaste"], capture_output=True, text=True).stdout
+        if txt == _last["txt"]:
+            return
+        _last["txt"] = txt
+        t = txt.strip()
+        if not t or len(t) < 2:
+            return
+        with open(_CLIPS, "a") as f:
+            f.write("- " + _t3.strftime("%m/%d %H:%M") + "\n\n" +
+                    t + "\n\n")
+
+    _ctimer = QTimer(pet)
+    _ctimer.timeout.connect(_clip_watch)
+    _ctimer.start(1000)
+    print("클립보드 자동 수집 시작")
+except Exception as _e:
+    print("클립보드 수집 실패:", _e)
 
 sys.exit(app.exec())
