@@ -294,6 +294,13 @@ def all_spaces(w=None):
         nw.setCollectionBehavior_(1 << 0 | 1 << 8 | 1 << 4)
         nw.setLevel_(1000)
 pet = Pet(sys.argv[1] if len(sys.argv) > 1 else None)
+# ==== 배경 앱 전환 ====
+try:
+    from AppKit import NSApplication as _NSA
+    _NSA.sharedApplication().setActivationPolicy_(1)
+    print("배경 앱으로 전환")
+except Exception as _e:
+    print("배경 앱 전환 실패:", _e)
 pet.show()
 pet.raise_()
 pet.activateWindow()
