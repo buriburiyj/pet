@@ -3,3 +3,7 @@ state.json
 check.png
 __pycache__/
 .DS_Store
+.aider*
+clips.md
+notes.md
+shots/

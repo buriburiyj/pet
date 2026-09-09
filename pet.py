@@ -310,17 +310,6 @@ pet.show()
 pet.raise_()
 pet.activateWindow()
 
-def _on_space_change(noti, pet_instance=pet):
-    """Called when the active space changes – trigger fly-in animation."""
-    pet_instance.fly_in()
-
-try:
-    from AppKit import NSWorkspace
-    _center = NSWorkspace.sharedWorkspace().notificationCenter()
-    _center.addObserverForName_object_queueUsingBlock_(
-        "NSWorkspaceActiveSpaceDidChangeNotification", None, None, _on_space_change)
-except Exception as e:
-    print("스페이스 변경 감지 설정 실패:", e)
 
 from PyQt6.QtCore import QTimer as _T
 _T.singleShot(300, all_spaces)
