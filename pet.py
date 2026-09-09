@@ -619,4 +619,33 @@ try:
 except Exception as _e:
     print("클립보드 수집 실패:", _e)
 
+
+# ==== 종료 요청 응답 ====
+try:
+    import signal as _sg
+    app.setQuitOnLastWindowClosed(True)
+
+    def _bye(*a):
+        try:
+            pet.close()
+        except Exception:
+            pass
+        app.quit()
+
+    for _n in (_sg.SIGTERM, _sg.SIGINT, _sg.SIGHUP):
+        _sg.signal(_n, _bye)
+
+    _sgt = QTimer(pet)
+    _sgt.timeout.connect(lambda: None)
+    _sgt.start(200)
+
+    try:
+        from AppKit import NSApplication as _NSA2
+        _NSA2.sharedApplication().delegate()
+    except Exception:
+        pass
+    print("종료 요청 응답 등록됨")
+except Exception as _e:
+    print("종료 응답 실패:", _e)
+
 sys.exit(app.exec())
