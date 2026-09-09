@@ -148,11 +148,11 @@ class Pet(QWidget):
         m.addSeparator()
         m.addAction("메모 (클릭)").triggered.connect(self.launch)
         m.addAction("집중 25분").triggered.connect(lambda: self.act("timer"))
-        m.addAction("클립보드 기록 보기").triggered.connect(lambda: self.act("clip"))
-        m.addAction("클립보드 기록 정리").triggered.connect(lambda: self.act("clean"))
         m.addAction("화면 캡처").triggered.connect(lambda: self.act("shot"))
         m.addAction("opencode 열기").triggered.connect(lambda: self.act("code"))
         m.addSeparator()
+        m.addAction("클립보드 기록 보기").triggered.connect(lambda: self.act("clip"))
+        m.addAction("클립보드 기록 정리").triggered.connect(lambda: self.act("clean"))
         m.addAction("닫기 (Q)").triggered.connect(self.close)
         m.exec(self.mapToGlobal(pos))
 
